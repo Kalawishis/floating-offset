@@ -66,8 +66,88 @@ and I define U64, Rational, Complex, etc. as instances of that metaclass
 own right).
 """
 
-BASE_VECTOR = [0]*64
+#thrown when a_val, b_val, or c_val is too large
+class Overflow_Exception(Exception):
+    pass
 
-class ABC(type):
-    def __init__(self, ab_offset, bc_offset, val = 0):
+#thrown when offsets given to ABC are impossible to implement
+class Bad_Offsets_Exception(Exeption):
+    pass
+
+"""
+This is a simple metaclass used for the purpose of modifying the behavior of type.
+This metaclass allows floating-offset numbers to check compatibility using the
+"==" operator and ensures type consistency. Two floating-offset numbers are of the
+same type if they have the same offsets, so type(floating_offset1) == type(floating_offset2)
+is enforced by this metaclass.
+"""
+class Equality_Meta(type):
+    def __eq__(self, other):
+        return self.offsets_string == other.offsets_string
+
+"""
+This is a namespace for the methods that will be contained within any instance of
+an object that is created from an instance of the ABC metaclass. These methods are
+called using the following form: "x": lambda self, ...: ABC_Methods.y(self, ...),
+where x is the name of the method in the object and y is the name of the method in
+the ABC_Methods namespace.
+"""
+class ABC_Methods:
+
+    NO_EXTREMES = (0, 0)
+    
+    #returns the lowest and highest values a signed integer with a bit vector having
+    #the given length can take, in the tuple form (minimum value, maximum value)
+    def signed_extremes(length):
+        if length == 0:
+            return NO_EXTREMES
+        return (-(2**(length - 1)), 2**(length - 1) - 1)
+
+    #returns the lowest and highest values an unsigned integer with a bit vector having
+    #the given length can take, in the tuple form (minimum value, maximum value)
+    def unsigned_extremes(length):
+        if length == 0:
+            return NO_EXTREMES
+        return (0, 2**length - 1)
+
+    #implementation of __init__ for floating-offset numbers
+    def construct(self, a_val = 1, b_val = 1, c_val = 1):
+        if not (a_extrema[0] <= a_val <= a_extrema[1] and
+                b_extrema[0] <= b_val <= b_extrema[1] and
+                c_extrema[0] <= c_val <= c_extrema[1]):
+            raise Overflow_Exception()
+        self.a_val = 1 if a_len == 0 else a_val
+        self.b_val = 1 if b_len == 0 else b_val
+        self.c_val = 1 if c_len == 0 else c_val
+        self.compose()
+
+    #modifies internal bit_vector to reflect appropriate a, b, and c values
+    def compose(self):
+        a_bitstring = list(bin(self.a_val))[2:]
+        b_bitstring = list(bin(self.b_val))[2:]
+        c_bitstring = list(bin(self.c_val))[2:]
+        self.bit_vector[offset1 - len(a_bitstring):offset1] = a_bitstring
+        self.bit_vector[offset2 - len(b_bitstring):offset2] = b_bitstring
+        self.bit_vector[len(base_vector) - len(c_bitstring):] = c_bitstring
+      
+"""
+This is a class factory whose instances are types for floating-offset numbers. All work
+is done in the new constructor, which initializes fields and methods for the class to
+give to its instances. Method definitions are given in the ABC_Methods namespace.
+"""
+def ABC(name, offset0, offset1, vector_size = 64):
+        if not 0 <= offset0 <= offset1 <= vector_size:
+            raise Bad_Offsets_Exception()
+        return Equality_Meta(name, (), {"offset0": offset0,
+                                        "offset1": offset1,
+                                        "offsets_string": str(offset0) + ':' + str(offset1),
+                                        "a_len": offset0,
+                                        "b_len": offset1 - offset0,
+                                        "c_len": vector_size - offset1,
+                                        "a_extrema": ABC_Methods.signed_extremes(a_len),
+                                        "b_extrema": ABC_Methods.unsigned_extremes(b_len),
+                                        "c_extrema": ABC_Methods.signed_extremes(c_len),
+                                        "bit_vector": [0]*vector_size})
+
+
             
