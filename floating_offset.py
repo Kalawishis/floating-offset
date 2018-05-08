@@ -9,6 +9,7 @@ These are of the form A*B^(1/C), where A is a signed integer in two's
 complement form, B is an unsigned integer, and C is a signed integer
 in two's complement form. This allows for the representation of a
 surprising amount of integers, rational numbers and irrational numbers.
+The ordering is big-endian.
 
 The number is represented by a bit vector in the ABC class. The
 length of the vector is currently 64-bit, but that will change
@@ -67,11 +68,15 @@ own right).
 """
 
 #thrown when a_val, b_val, or c_val is too large
-class Overflow_Exception(Exception):
+class OverflowException(Exception):
     pass
 
 #thrown when offsets given to ABC are impossible to implement
-class Bad_Offsets_Exception(Exeption):
+class BadOffsetsException(Exception):
+    pass
+
+#thrown when two floating-offset numbers have incompatible types
+class TypeMismatchException(Exception):
     pass
 
 """
@@ -81,7 +86,7 @@ This metaclass allows floating-offset numbers to check compatibility using the
 same type if they have the same offsets, so type(floating_offset1) == type(floating_offset2)
 is enforced by this metaclass.
 """
-class Equality_Meta(type):
+class EqualityMeta(type):
     def __eq__(self, other):
         return self.offsets_string == other.offsets_string
 
@@ -92,44 +97,111 @@ called using the following form: "x": lambda self, ...: ABC_Methods.y(self, ...)
 where x is the name of the method in the object and y is the name of the method in
 the ABC_Methods namespace.
 """
-class ABC_Methods:
+class ABCMethods:
 
-    NO_EXTREMES = (0, 0)
+    NO_EXTREMES = (1, 1)
+    MAPPING = {True: "1", False: "0"}
+    ANTI_MAPPING = {"1": True, "0": False}
     
     #returns the lowest and highest values a signed integer with a bit vector having
     #the given length can take, in the tuple form (minimum value, maximum value)
     def signed_extremes(length):
         if length == 0:
-            return NO_EXTREMES
+            return ABCMethods.NO_EXTREMES
         return (-(2**(length - 1)), 2**(length - 1) - 1)
 
     #returns the lowest and highest values an unsigned integer with a bit vector having
     #the given length can take, in the tuple form (minimum value, maximum value)
     def unsigned_extremes(length):
         if length == 0:
-            return NO_EXTREMES
+            return ABCMethods.NO_EXTREMES
         return (0, 2**length - 1)
 
     #implementation of __init__ for floating-offset numbers
-    def construct(self, a_val = 1, b_val = 1, c_val = 1):
-        if not (a_extrema[0] <= a_val <= a_extrema[1] and
-                b_extrema[0] <= b_val <= b_extrema[1] and
-                c_extrema[0] <= c_val <= c_extrema[1]):
-            raise Overflow_Exception()
-        self.a_val = 1 if a_len == 0 else a_val
-        self.b_val = 1 if b_len == 0 else b_val
-        self.c_val = 1 if c_len == 0 else c_val
-        self.compose()
+    def construct(self, a_val, b_val, c_val):
+        self.bit_vector = [False]*self.vector_size  
+        if not (self.a_extrema[0] <= a_val <= self.a_extrema[1] and
+                self.b_extrema[0] <= b_val <= self.b_extrema[1] and
+                self.c_extrema[0] <= c_val <= self.c_extrema[1]):
+            raise OverflowException()
 
-    #modifies internal bit_vector to reflect appropriate a, b, and c values
-    def compose(self):
-        a_bitstring = list(bin(self.a_val))[2:]
-        b_bitstring = list(bin(self.b_val))[2:]
-        c_bitstring = list(bin(self.c_val))[2:]
-        self.bit_vector[offset1 - len(a_bitstring):offset1] = a_bitstring
-        self.bit_vector[offset2 - len(b_bitstring):offset2] = b_bitstring
-        self.bit_vector[len(base_vector) - len(c_bitstring):] = c_bitstring
-      
+        #modification of internal bit_vector to match passed_in values
+        if self.a_len != 0:
+            a_bitstring = [ABCMethods.ANTI_MAPPING[bit] for bit in list(bin(a_val))[2:]]
+            self.bit_vector[self.offset0 - len(a_bitstring):self.offset0] = a_bitstring
+        if self.b_len != 0:
+            b_bitstring = [ABCMethods.ANTI_MAPPING[bit] for bit in list(bin(b_val))[2:]]
+            self.bit_vector[self.offset1 - len(b_bitstring):self.offset1] = b_bitstring
+        if self.c_len != 0:
+            c_bitstring = [ABCMethods.ANTI_MAPPING[bit] for bit in list(bin(c_val))[2:]]
+            self.bit_vector[len(self.bit_vector) - len(c_bitstring):] = c_bitstring
+
+    #implementation of | operator
+    def bitwise_or(self, other):
+        if type(self) != type(other):
+            raise TypeMismatchException()
+        result = type(self)()
+        for bit_index in range(len(self.bit_vector)):
+            result.bit_vector[bit_index] = self.bit_vector[bit_index] or other.bit_vector[bit_index]
+        return result
+
+    #implementation of & operator
+    def bitwise_and(self, other):
+        if type(self) != type(other):
+            raise TypeMismatchException()
+        result = type(self)()
+        for bit_index in range(len(self.bit_vector)):
+            result.bit_vector[bit_index] = self.bit_vector[bit_index] and other.bit_vector[bit_index]
+        return result
+
+    #implementation of ^ operator
+    def bitwise_xor(self, other):
+        if type(self) != type(other):
+            raise TypeMismatchException()
+        result = type(self)()
+        for bit_index in range(len(self.bit_vector)):
+            result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other.bit_vector[bit_index]
+        return result
+
+    #implementation of ~ operator
+    def bitwise_not(self):
+        result = type(self)()
+        for bit_index in range(len(self.bit_vector)):
+            result.bit_vector[bit_index] = not self.bit_vector[bit_index]
+        return result        
+
+    #the decimal value of the floating-offset number
+    def represent(self):
+        #print("a_extrema", self.a_extrema[0])
+        #computation of signed A value
+        if self.a_len == 0:
+            a_val = 1
+        else:
+            if self.bit_vector[0] == True:
+                #print("ran?")
+                a_val = self.a_extrema[0]
+            else:
+                a_val = 0
+            if self.a_len > 1:
+                a_val += int("".join([ABCMethods.MAPPING[bit] for bit in self.bit_vector[1:self.offset0]]), 2)
+        #print("a_val represent", a_val)
+
+        #computation of unsigned B value (simpler)
+        b_val = 1 if self.b_len == 0 else int("".join([ABCMethods.MAPPING[bit] for bit in self.bit_vector[self.offset0:self.offset1]]), 2)
+
+        #computation of signed C value
+        if self.c_len == 0:
+            c_val = 1
+        else:
+            if self.bit_vector[self.offset1] == True:
+                c_val = self.c_extrema[0]
+            else:
+                c_val = 0
+            if self.c_len > 1:
+                c_val += int("".join([ABCMethods.MAPPING[bit] for bit in self.bit_vector[self.offset1 + 1:]]), 2)
+
+        return str(a_val*b_val**(1/c_val))
+
 """
 This is a class factory whose instances are types for floating-offset numbers. All work
 is done in the new constructor, which initializes fields and methods for the class to
@@ -137,17 +209,54 @@ give to its instances. Method definitions are given in the ABC_Methods namespace
 """
 def ABC(name, offset0, offset1, vector_size = 64):
         if not 0 <= offset0 <= offset1 <= vector_size:
-            raise Bad_Offsets_Exception()
-        return Equality_Meta(name, (), {"offset0": offset0,
+            raise BadOffsetsException()
+        return EqualityMeta(name, (),  {#fields
+                                        "offset0": offset0,
                                         "offset1": offset1,
-                                        "offsets_string": str(offset0) + ':' + str(offset1),
+                                        "offsets_string": str(offset0) + ':' + str(offset1) + ':' + str(vector_size),
                                         "a_len": offset0,
                                         "b_len": offset1 - offset0,
                                         "c_len": vector_size - offset1,
-                                        "a_extrema": ABC_Methods.signed_extremes(a_len),
-                                        "b_extrema": ABC_Methods.unsigned_extremes(b_len),
-                                        "c_extrema": ABC_Methods.signed_extremes(c_len),
-                                        "bit_vector": [0]*vector_size})
+                                        "a_extrema": ABCMethods.signed_extremes(offset0),
+                                        "b_extrema": ABCMethods.unsigned_extremes(offset1 - offset0),
+                                        "c_extrema": ABCMethods.signed_extremes(vector_size - offset1),
+                                        "vector_size": vector_size,
+                                        #methods
+                                        "__init__": lambda self, a_val = 1, b_val = 1, c_val = 1: ABCMethods.construct(self, a_val, b_val, c_val),
+                                        "__or__": lambda self, other: ABCMethods.bitwise_or(self, other),
+                                        "__and__": lambda self, other: ABCMethods.bitwise_and(self, other),
+                                        "__xor__": lambda self, other: ABCMethods.bitwise_xor(self, other),
+                                        "__invert__": lambda self: ABCMethods.bitwise_not(self),
+                                        "__str__": lambda self: ABCMethods.represent(self)})
 
+#TESTS
+    
+#floating-offset classes
+print("floating offset classes being constructed")
+I64 = ABC("Signed 64-Bit Integer", 64, 64)
+U64 = ABC("Unsigned 64-Bit Integer", 0, 64)
+print()
+
+#floating-offset numbers
+print("floating-offset numbers being constructed")
+i0 = I64(56)
+i1 = I64(25)
+
+#bitwise operations
+print("bitwise operations")
+i2 = ~i0
+i3 = i0&i1
+i4 = i0|i1
+i5 = i0^i1
+print()
+
+print("printing values")
+print("i0", i0)
+print("i1", i1)
+print("i2", i2)
+print("i3", i3)
+print("i4", i4)
+print("i5", i5)
+print()
 
             
