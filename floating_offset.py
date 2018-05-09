@@ -168,7 +168,17 @@ class ABCMethods:
         result = type(self)()
         for bit_index in range(len(self.bit_vector)):
             result.bit_vector[bit_index] = not self.bit_vector[bit_index]
-        return result        
+        return result
+
+    #implementation of == operator
+    def equals(self, other):
+        #normalize?
+        if type(self) != type(other):
+            raise TypeMismatchException()
+        for bit_index in range(len(self.bit_vector):
+            if self.bit_vector[bit_index] != other.bit_vector[bit_index]:
+                return False
+        return True
 
     #the decimal value of the floating-offset number
     def represent(self):
@@ -241,6 +251,8 @@ print()
 print("floating-offset numbers being constructed")
 i0 = I64(56)
 i1 = I64(25)
+u0 = U64(b_val = 10)
+u1 = U64(b_val = 20)
 
 #bitwise operations
 print("bitwise operations")
@@ -248,6 +260,10 @@ i2 = ~i0
 i3 = i0&i1
 i4 = i0|i1
 i5 = i0^i1
+u2 = ~u0
+u3 = u0&u1
+u4 = u0|u1
+u5 = u0^u1
 print()
 
 print("printing values")
@@ -257,6 +273,13 @@ print("i2", i2)
 print("i3", i3)
 print("i4", i4)
 print("i5", i5)
+
+print("u0", u0)
+print("u1", u1)
+print("u2", u2)
+print("u3", u3)
+print("u4", u4)
+print("u5", u5)
 print()
 
             
