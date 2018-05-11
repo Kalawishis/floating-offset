@@ -79,6 +79,10 @@ class BadOffsetsException(Exception):
 class TypeMismatchException(Exception):
     pass
 
+#thrown when an operation requires unimplemented functionality
+class NotImplementedException(Exception):
+    pass
+
 """
 This is a simple metaclass used for the purpose of modifying the behavior of type.
 This metaclass allows floating-offset numbers to check compatibility using the
@@ -127,7 +131,7 @@ class ABCMethods:
 
         #modification of internal bit_vector to match passed_in values
         if self.a_len != 0:
-            a_bitstring = [ABCMethods.ANTI_MAPPING[bit] for bit in list(bin(a_val))[2:]]
+            a_bitstring = [ABCMethods.ANTI_MAPPING[bit] for bit in list(bin(a_val & self.a_val_max_binary))[2:]]
             self.bit_vector[self.offset0 - len(a_bitstring):self.offset0] = a_bitstring
         if self.b_len != 0:
             b_bitstring = [ABCMethods.ANTI_MAPPING[bit] for bit in list(bin(b_val))[2:]]
@@ -175,12 +179,107 @@ class ABCMethods:
         #normalize?
         if type(self) != type(other):
             raise TypeMismatchException()
-        for bit_index in range(len(self.bit_vector):
+        for bit_index in range(len(self.bit_vector)):
             if self.bit_vector[bit_index] != other.bit_vector[bit_index]:
                 return False
         return True
 
-    #the decimal value of the floating-offset number
+    #implementation of + operator
+    def addition(self, other):
+                               
+        #normalize a, b values for self and other
+        if type(self) != type(other):
+            raise TypeMismatchException()
+        result = type(self)()
+                               
+        #if b_vals and c_vals are equal (signed addition)
+        #editing a_val, two's complement
+        if self.bit_vector[self.offset0:self.offset1] == other.bit_vector[self.offset0:self.offset1] and \
+           self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
+           self.a_len != 0:
+            carry = False
+            for bit_index in range(self.offset0)[::-1]:
+                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other.bit_vector[bit_index] ^ carry
+                carry = self.bit_vector[bit_index] + other.bit_vector[bit_index] + carry > 1
+            """
+            if carry:
+                raise OverflowException()
+            """
+            result.bit_vector[self.offset0:] = self.bit_vector[self.offset0:][:]
+                               
+        #if a_vals and c_vals are equal (unsigned addition)
+        #editing b_val, no two's complement
+        elif self.bit_vector[:self.offset0] == other.bit_vector[:self.offset0] and \
+           self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
+           self.b_len != 0:
+            carry = False
+            for bit_index in range(self.offset0, self.offset1)[::-1]:
+                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other.bit_vector[bit_index] ^ carry
+                carry = self.bit_vector[bit_index] + other.bit_vector[bit_index] + carry > 1
+            """
+            if carry:
+                raise OverflowException()
+            """
+            result.bit_vector[:self.offset0] = self.bit_vector[:self.offset0][:]
+            result.bit_vector[self.offset1:] = self.bit_vector[self.offset1:][:]
+
+        #implement later
+        else:
+            raise NotImplementedException()
+        return result
+
+    #implementation of - operator
+    def subtraction(self, other):
+                               
+        #normalize a, b values for self and other
+        if type(self) != type(other):
+            raise TypeMismatchException()
+        result = type(self)()
+
+        #if b_vals and c_vals are equal (signed subtraction)
+        #editing a_val, two's complement
+        #essentially just unsigned addition, but must flip the leftmost bit of the other floating-offset number's a_val
+        if self.bit_vector[self.offset0:self.offset1] == other.bit_vector[self.offset0:self.offset1] and \
+           self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
+           self.a_len != 0:
+            carry = False
+            invert = False
+            for bit_index in range(self.offset0)[::-1]:
+                other_bit = invert ^ other.bit_vector[bit_index]
+                if bit_index == 0:
+                    print("other_bit", other_bit)
+                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other_bit ^ carry
+                carry = self.bit_vector[bit_index] + other_bit + carry > 1
+                invert = other_bit or invert
+            """
+            if carry:
+                raise OverflowException()
+            """
+            result.bit_vector[self.offset0:] = self.bit_vector[self.offset0:][:]
+                               
+        #if a_vals and c_vals are equal (unsigned subtraction)
+        #editing b_val, no two's complement
+        #like addition, but must use a different carry system
+        elif self.bit_vector[:self.offset0] == other.bit_vector[:self.offset0] and \
+             self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
+             self.b_len != 0:
+            carry = False
+            for bit_index in range(self.offset0, self.offset1)[::-1]:
+                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other.bit_vector[bit_index] ^ carry
+                carry = self.bit_vector[bit_index] - other.bit_vector[bit_index] - carry < 0
+            """
+            if carry:
+                raise OverflowException()
+            """
+            result.bit_vector[:self.offset0] = self.bit_vector[:self.offset0][:]
+            result.bit_vector[self.offset1:] = self.bit_vector[self.offset1:][:]
+
+        #implement later                    
+        else:
+            raise NotImplementedException()
+        return result
+        
+    #the floating-point decimal value of the floating-offset number
     def represent(self):
         #print("a_extrema", self.a_extrema[0])
         #computation of signed A value
@@ -188,7 +287,6 @@ class ABCMethods:
             a_val = 1
         else:
             if self.bit_vector[0] == True:
-                #print("ran?")
                 a_val = self.a_extrema[0]
             else:
                 a_val = 0
@@ -220,7 +318,9 @@ give to its instances. Method definitions are given in the ABC_Methods namespace
 def ABC(name, offset0, offset1, vector_size = 64):
         if not 0 <= offset0 <= offset1 <= vector_size:
             raise BadOffsetsException()
-        return EqualityMeta(name, (),  {#fields
+        return EqualityMeta(name, (),  {
+
+                                        #fields
                                         "offset0": offset0,
                                         "offset1": offset1,
                                         "offsets_string": str(offset0) + ':' + str(offset1) + ':' + str(vector_size),
@@ -231,13 +331,28 @@ def ABC(name, offset0, offset1, vector_size = 64):
                                         "b_extrema": ABCMethods.unsigned_extremes(offset1 - offset0),
                                         "c_extrema": ABCMethods.signed_extremes(vector_size - offset1),
                                         "vector_size": vector_size,
+                                        "a_val_max_binary": 2**offset0 - 1,
+                                        
                                         #methods
+                                        #constructor
                                         "__init__": lambda self, a_val = 1, b_val = 1, c_val = 1: ABCMethods.construct(self, a_val, b_val, c_val),
+
+                                        #bitwise
                                         "__or__": lambda self, other: ABCMethods.bitwise_or(self, other),
                                         "__and__": lambda self, other: ABCMethods.bitwise_and(self, other),
                                         "__xor__": lambda self, other: ABCMethods.bitwise_xor(self, other),
                                         "__invert__": lambda self: ABCMethods.bitwise_not(self),
-                                        "__str__": lambda self: ABCMethods.represent(self)})
+
+                                        #comparators
+                                        "__eq__": lambda self, other: ABCMethods.equals(self, other),
+
+                                        #arithmetic
+                                        "__add__": lambda self, other: ABCMethods.addition(self, other),
+                                        "__sub__": lambda self, other: ABCMethods.subtraction(self, other),
+
+                                        #convert to floating point decimal
+                                        "__str__": lambda self: ABCMethods.represent(self)
+                                        })
 
 #TESTS
     
@@ -282,4 +397,40 @@ print("u4", u4)
 print("u5", u5)
 print()
 
-            
+#equality checks
+ie0 = I64(56)
+ie1 = I64(56)
+ie2 = I64(-26)
+ie3 = I64(-26)
+ie4 = I64(1)
+ie5 = I64(-2)
+ie6 = I64(26)
+ue0 = U64(b_val = 56)
+ue1 = U64(b_val = 56)
+ue2 = U64(b_val = 26)
+
+print("signed 56 == signed 56?", ie0 == ie1)
+print("signed 56 == signed -26?", ie0 == ie2)
+print("signed -26 == signed -26?", ie2 == ie3)
+print("unsigned 56 == unsigned 56?", ue0 == ue1)
+print("unsigned 56 == unsigned 26?", ue0 == ue2)
+
+#arithmetic checks
+#addition
+print("addition")
+print("signed 56 + signed 56 == signed 112?", ie0 + ie1)
+print("signed 56 + signed -26 == signed 30?", ie0 + ie2)
+print("signed 1 + signed -2 == signed -1?", ie4 + ie5)
+print("signed 56 + signed -26 + signed -26 + signed -26 == signed -22?", ie0 + ie2 + ie3 + ie2)
+print("unsigned 56 + unsigned 56 == unsigned 112?", ue0 + ue1)
+print("unsigned 56 + unsigned 26 == unsigned 82?", ue1 + ue2)
+#subtraction
+print("subtraction")
+print("signed 1 - signed 1 == signed 0?", ie4 - ie4)
+print("signed 56 - signed 56 == signed 0?", ie0 - ie1)
+print("signed 56 - signed 26 == signed 30?", ie1 - ie6)
+print("signed 56 - signed 26 - signed 26 - signed 26 == signed -22?", ie0 - ie6 - ie6 - ie6)
+print("signed 56 - signed -26 == signed 82?", ie0 - ie2)
+print("signed -26 - signed -26 == signed 0?", ie2 - ie2)
+print("unsigned 56 - unsigned 26 == unsigned 30?", ue0 - ue2)
+print("unsigned 56 - unsigned 56 == unsigned 0?", ue0 - ue0)
