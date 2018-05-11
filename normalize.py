@@ -10,12 +10,14 @@ def norm(A,B,C):
         c_isneg=True
         C=abs(C)
 
-    while(B%C ==0):
+    tempB=B
+    while(tempB%C ==0):
         coeff+=1
-        B=B//C
+        tempB=tempB//C
     coeff = (coeff//C) * C
     if coeff ==0:
         coeff =1
+    B=B//coeff
     if B==1:
         C=1
     if c_isneg:
@@ -34,4 +36,4 @@ def norm(A,B,C):
         A=A*coeff
     print(str(A) + " * (" + str(B) + ")^1/" + str(C))
 
-norm(-6,48,-2)
+norm(1,6,2)
