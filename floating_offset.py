@@ -1,9 +1,4 @@
 """
-(Add variable length bit vectors)
-(Add metaclass structure)
-(Consider renaming "floating-offset" notation)
-(Find use for ABC(0, 0)
-
 Python library for the implementation of floating-offset numbers
 These are of the form A*B^(1/C), where A is a signed integer in two's
 complement form, B is an unsigned integer, and C is a signed integer
@@ -15,17 +10,17 @@ The number is represented by a bit vector in the ABC class. The
 length of the vector is currently 64-bit, but that will change
 later. The ABC constructor takes two arguments representing
 offsets inside the bit vector which delineate the values A, B,
-and C. For example, ABC(12, 57) will make it so that the A value
+and C. For example, ABC("abc", 12, 57) will make it so that the A value
 is composed of the first 12 bits, the B value is composed of the
 next 45 bits (12 to 57), and the C value is composed of the final
 7 bits (57 to 64).
 
 If 0 bits are allocated towards an A, B, or C value, that value is
 treated as being equal to 1. This allows the ABC notation to
-represent all manner of number forms. For example, ABC(64, 64) gives
+represent all manner of number forms. For example, ABC("a", 64, 64) gives
 all bits to the A value and is essentially a signed long long.
-ABC(0, 64) gives all bits to the B value and is essentially an unsigned
-long long. ABC(0, 0) gives all bits to the C value, but since A and B
+ABC("b", 0, 64) gives all bits to the B value and is essentially an unsigned
+long long. ABC("c", 0, 0) gives all bits to the C value, but since A and B
 are 1 the number is going to be 1 no matter what (in other words, doing
 this is pointless at the moment). 
 
@@ -34,37 +29,17 @@ negative 1. This will have the effect of making A the numerator and B
 the denominator. Irrational numbers are created by setting C to a value
 other than 1, which would give roots. For example, sqrt(2)/2 can be
 represented with A = 1, B = 2, and C = -2. This is 1*2^(1/-2) which is
-1/sqrt(2) which is sqrt(2)/2. Setting C = 0 gives NaN. 
+1/sqrt(2) which is sqrt(2)/2.
 
-Example code:
-
-X_Type = ABC(32, 48) #x_type a class for floating-offsets with those specific offsets
-Y_Type = ABC(16, 32) #see above
-
-x0 = X_Type(a_val = 42) #keyword argument for initial value of A: default 1
-                        #same behavior and implementation for b_val, c_val
-x1 = X_Type(a_val = 43)
-y0 = Y_Type(a_val = 42)
-x2 = X_Type(b_val = 42) 
-
-x0 == x1 #false
-x0 + 1 == x1 #true
-x0 == y0 #error, comparing w/ different offsets is a type error,
-         #even if numerically the same
-x0*x1 == x1*x0 #true (always follows commutativity, associativity, general rules of
-                arithmetic as defined mathematically by the operations)
-x0 + x1 - x0 == x1 #true
-x0 == x2 #true, x numerically equals w although they were constructed differently
-
-
-In due time all operations will be listed.
+Example code is given in the test cases.
 
 It's important to note that ABCs with different offsets are not
 different instances of the same class, they are different classes
 themselves. This will become apparent when ABC becomes a metaclass
 and I define U64, Rational, Complex, etc. as instances of that metaclass
 (remember, instances of a metaclass are classes and types in their
-own right).
+own right). These different types are therefore incompatible in their
+operations.
 """
 
 #thrown when a_val, b_val, or c_val is too large
@@ -184,6 +159,16 @@ class ABCMethods:
                 return False
         return True
 
+    #performs bitwise signed addition
+    def signed_add(bit_vector0, bit_vector1):
+        carry = False
+        result = []
+        for bit_index in range(len(bit_vector0))[::-1]:
+            result.append(bit_vector0[bit_index] ^ bit_vector1[bit_index] ^ carry)
+            carry = bit_vector0[bit_index] + bit_vector1[bit_index] + carry > 1
+        result.reverse()
+        return result
+
     #implementation of + operator
     def addition(self, other):
                                
@@ -197,14 +182,8 @@ class ABCMethods:
         if self.bit_vector[self.offset0:self.offset1] == other.bit_vector[self.offset0:self.offset1] and \
            self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
            self.a_len != 0:
-            carry = False
-            for bit_index in range(self.offset0)[::-1]:
-                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other.bit_vector[bit_index] ^ carry
-                carry = self.bit_vector[bit_index] + other.bit_vector[bit_index] + carry > 1
-            """
-            if carry:
-                raise OverflowException()
-            """
+            result.bit_vector[:self.offset0] = ABCMethods.signed_add(self.bit_vector[:self.offset0],
+                                                                     other.bit_vector[:other.offset0])
             result.bit_vector[self.offset0:] = self.bit_vector[self.offset0:][:]
                                
         #if a_vals and c_vals are equal (unsigned addition)
@@ -212,20 +191,33 @@ class ABCMethods:
         elif self.bit_vector[:self.offset0] == other.bit_vector[:self.offset0] and \
            self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
            self.b_len != 0:
-            carry = False
-            for bit_index in range(self.offset0, self.offset1)[::-1]:
-                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other.bit_vector[bit_index] ^ carry
-                carry = self.bit_vector[bit_index] + other.bit_vector[bit_index] + carry > 1
-            """
-            if carry:
-                raise OverflowException()
-            """
+            result.bit_vector[self.offset0:self.offset1] = ABCMethods.signed_add(self.bit_vector[self.offset0:self.offset1],
+                                                                                 other.bit_vector[other.offset0:other.offset1])
             result.bit_vector[:self.offset0] = self.bit_vector[:self.offset0][:]
             result.bit_vector[self.offset1:] = self.bit_vector[self.offset1:][:]
 
         #implement later
         else:
             raise NotImplementedException()
+        return result
+
+    #converts number to its two's complement negative
+    def invert(bit_vector):
+        invert = False
+        result = []
+        for bit_index in range(len(bit_vector))[::-1]:
+            result.append(bit_vector[bit_index] ^ invert)
+            invert = bit_vector[bit_index] or invert
+        result.reverse()
+        return result
+
+    def unsigned_subtract(bit_vector0, bit_vector1):
+        carry = False
+        result = []
+        for bit_index in range(len(bit_vector0))[::-1]:
+            result.append(bit_vector0[bit_index] ^ bit_vector1[bit_index] ^ carry)
+            carry = bit_vector0[bit_index] - bit_vector1[bit_index] - carry < 0
+        result.reverse()
         return result
 
     #implementation of - operator
@@ -238,23 +230,12 @@ class ABCMethods:
 
         #if b_vals and c_vals are equal (signed subtraction)
         #editing a_val, two's complement
-        #essentially just unsigned addition, but must flip the leftmost bit of the other floating-offset number's a_val
+        #essentially just unsigned addition with negative of other's bit vector
         if self.bit_vector[self.offset0:self.offset1] == other.bit_vector[self.offset0:self.offset1] and \
            self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
            self.a_len != 0:
-            carry = False
-            invert = False
-            for bit_index in range(self.offset0)[::-1]:
-                other_bit = invert ^ other.bit_vector[bit_index]
-                if bit_index == 0:
-                    print("other_bit", other_bit)
-                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other_bit ^ carry
-                carry = self.bit_vector[bit_index] + other_bit + carry > 1
-                invert = other_bit or invert
-            """
-            if carry:
-                raise OverflowException()
-            """
+            result.bit_vector[:self.offset0] = ABCMethods.signed_add(self.bit_vector[:self.offset0],
+                                                                     ABCMethods.invert(other.bit_vector[:other.offset0]))
             result.bit_vector[self.offset0:] = self.bit_vector[self.offset0:][:]
                                
         #if a_vals and c_vals are equal (unsigned subtraction)
@@ -263,14 +244,8 @@ class ABCMethods:
         elif self.bit_vector[:self.offset0] == other.bit_vector[:self.offset0] and \
              self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
              self.b_len != 0:
-            carry = False
-            for bit_index in range(self.offset0, self.offset1)[::-1]:
-                result.bit_vector[bit_index] = self.bit_vector[bit_index] ^ other.bit_vector[bit_index] ^ carry
-                carry = self.bit_vector[bit_index] - other.bit_vector[bit_index] - carry < 0
-            """
-            if carry:
-                raise OverflowException()
-            """
+            result.bit_vector[self.offset0:self.offset1] = ABCMethods.unsigned_subtract(self.bit_vector[self.offset0:self.offset1],
+                                                                                        other.bit_vector[other.offset0:other.offset1])
             result.bit_vector[:self.offset0] = self.bit_vector[:self.offset0][:]
             result.bit_vector[self.offset1:] = self.bit_vector[self.offset1:][:]
 
