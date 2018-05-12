@@ -70,7 +70,7 @@ def multiply(A1,B1,C1,A2,B2,C2):
             C=-C
         norm(A,B,C)
     else:
-        print("cannot multiply cleanly (there are fractions in form of radicals)")
+        print("cannot multiply cleanly (there are radicals in both numerator and denominator)")
 
 
 multiply(1,5,3,1,2,2)
