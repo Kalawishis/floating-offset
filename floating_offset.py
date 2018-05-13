@@ -172,7 +172,7 @@ class ABCMethods:
     #implementation of + operator
     def addition(self, other):
                                
-        #normalize a, b values for self and other
+        #TODO: normalize a, b values for self and other
         if type(self) != type(other):
             raise TypeMismatchException()
         result = type(self)()
@@ -211,6 +211,7 @@ class ABCMethods:
         result.reverse()
         return result
 
+    #performs bitwise unsigned subtraction
     def unsigned_subtract(bit_vector0, bit_vector1):
         carry = False
         result = []
@@ -223,7 +224,7 @@ class ABCMethods:
     #implementation of - operator
     def subtraction(self, other):
                                
-        #normalize a, b values for self and other
+        #TODO: normalize a, b values for self and other
         if type(self) != type(other):
             raise TypeMismatchException()
         result = type(self)()
@@ -253,7 +254,72 @@ class ABCMethods:
         else:
             raise NotImplementedException()
         return result
+
+    #shifts left according to the parameters
+    def shift_left(bit_vector, shift):
+        result = bit_vector[shift:]
+        result.extend([False]*(len(bit_vector)-len(result)))
+        return result
+
+    #shifts right according to the parameters
+    def shift_right(bit_vector, shift):
+        result = ABCMethods.shift_left(bit_vector[::-1], shift)
+        return result[::-1]
+
+    #unsigned bit vector multiplication
+    def unsigned_multiply(bit_vector0, bit_vector1):
+        result = [False]*len(bit_vector0)
+        while (sum(bit_vector1) > 0): #while bit_vector1 greater than 0
+            if bit_vector1[-1]:
+                result = ABCMethods.signed_add(result, bit_vector0)
+
+            bit_vector0 = ABCMethods.shift_left(bit_vector0, 1)
+            bit_vector1 = ABCMethods.shift_right(bit_vector1, 1)
+        return result
+
+    #signed bit vector multiplication
+    def signed_multiply(bit_vector0, bit_vector1):
+        bit_vector0_negative = bit_vector0[0]
+        bit_vector1_negative = bit_vector1[0]
+        if bit_vector0_negative:
+            bit_vector0 = ABCMethods.invert(bit_vector0)
+        if bit_vector1_negative:
+            bit_vector1 = ABCMethods.invert(bit_vector1)
+        result = ABCMethods.unsigned_multiply(bit_vector0, bit_vector1)
+        if bit_vector0_negative ^ bit_vector1_negative:
+            return ABCMethods.invert(result)
+        return result
+
+    #implementation of * operator
+    def multiplication(self, other):
         
+        #TODO: normalize a, b values for self and other
+        if type(self) != type(other):
+            raise TypeMismatchException()
+        result = type(self)()
+
+        #if b_vals and c_vals are equal (signed multiplication)
+        if self.bit_vector[self.offset0:self.offset1] == other.bit_vector[self.offset0:self.offset1] and \
+           self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
+           self.a_len != 0:
+            result.bit_vector[:self.offset0] = ABCMethods.signed_multiply(self.bit_vector[:self.offset0],
+                                                                          other.bit_vector[:other.offset0])
+            result.bit_vector[self.offset0:] = self.bit_vector[self.offset0:][:]
+                               
+        #if a_vals and c_vals are equal (unsigned multiplication)
+        elif self.bit_vector[:self.offset0] == other.bit_vector[:self.offset0] and \
+             self.bit_vector[self.offset1:] == other.bit_vector[self.offset1:] and \
+             self.b_len != 0:
+            result.bit_vector[self.offset0:self.offset1] = ABCMethods.unsigned_multiply(self.bit_vector[self.offset0:self.offset1],
+                                                                                        other.bit_vector[other.offset0:other.offset1])
+            result.bit_vector[:self.offset0] = self.bit_vector[:self.offset0][:]
+            result.bit_vector[self.offset1:] = self.bit_vector[self.offset1:][:]
+
+        #implement later                    
+        else:
+            raise NotImplementedException()
+        return result
+    
     #the floating-point decimal value of the floating-offset number
     def represent(self):
         #print("a_extrema", self.a_extrema[0])
@@ -324,6 +390,7 @@ def ABC(name, offset0, offset1, vector_size = 64):
                                         #arithmetic
                                         "__add__": lambda self, other: ABCMethods.addition(self, other),
                                         "__sub__": lambda self, other: ABCMethods.subtraction(self, other),
+                                        "__mul__": lambda self, other: ABCMethods.multiplication(self, other),
 
                                         #convert to floating point decimal
                                         "__str__": lambda self: ABCMethods.represent(self)
@@ -409,3 +476,10 @@ print("signed 56 - signed -26 == signed 82?", ie0 - ie2)
 print("signed -26 - signed -26 == signed 0?", ie2 - ie2)
 print("unsigned 56 - unsigned 26 == unsigned 30?", ue0 - ue2)
 print("unsigned 56 - unsigned 56 == unsigned 0?", ue0 - ue0)
+#multiplication
+print("multiplication")
+print("signed 56 * signed 56 == signed 3136?", ie0*ie1)
+print("signed 56 * signed -26 == signed -1456?", ie0*ie2)
+print("signed 56 * signed -26 * signed -26 * signed -26 == signed -984256?", ie0*ie2*ie3*ie2)
+print("unsigned 56 * unsigned 56 == unsigned 3136?", ue0*ue1)
+print("unsigned 56 * unsigned 26 == unsigned 1456?", ue1*ue2)
